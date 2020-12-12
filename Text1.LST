@@ -1,0 +1,384 @@
+C51 COMPILER V9.60.0.0   TEXT1                                                             12/07/2020 01:40:59 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE TEXT1
+OBJECT MODULE PLACED IN Text1.OBJ
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE Text1.c OPTIMIZE(8,SPEED) DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          
+   2          
+   3          #include <reg52.h>
+   4          #include <string.h>
+   5          #include <intrins.h>
+   6          #define uchar unsigned char
+   7          #define uint unsigned int
+   8          #define FOSC 11.0592 // 系统晶振频率11.0592MHz
+   9          #define FACTOR 0.1720 // (距离计算因子)[(12 / FOSC) * 10^-6] * 340 / 2
+  10            
+  11          /*主模块端口定义*/
+  12          sbit trig = P2^1; // 电平触发输入引脚
+  13          sbit echo = P2^0; // 回声输出引脚
+  14          
+  15          /*LCD1602显示模块端口定义*/
+  16          sbit lcdrs = P2^6;
+  17          sbit lcdrw = P2^5;
+  18          sbit lcden = P2^7;
+  19          sbit led1  = P1^3;
+  20          sbit led2  = P1^4;
+  21          sbit beep  = P1^5;
+  22          sbit dj    = P2^3;
+  23          sbit key1 =  P1^0;
+  24          sbit key2 =  P1^1;
+  25          sbit key3 =  P1^2;
+  26          
+  27          /*主模块函数声明*/
+  28          void startUltra();
+  29          void timerInit();
+  30          void delayUs(uint xus);
+  31          void computeDis();
+  32          
+  33          /*LCD1602显示模块函数声明*/
+  34          void delay(uint xms);
+  35          void writeCommand(uchar command);
+  36          void writeDataLCD(uchar dat);
+  37          void LCDInit();
+  38          void display(float dat,l,m,h);
+  39          
+  40          /*定义全局变量*/
+  41          uint time = 0; // 记录回声高电平持续时间
+  42          uint distance = 0; // 存放距离
+  43          unsigned int sw,l,m,h,d;
+  44          uchar dis[3],djb;
+  45          uchar zifu[]={0x30,0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39};
+  46          uchar lb,mb,hb;
+  47          uint db=0;
+  48          /*主函数*/
+  49          void main(){
+  50   1        d=160;
+  51   1        l=50;
+  52   1        m=70;
+  53   1        h=120;
+  54   1        sw=0;
+  55   1        led1=1;
+C51 COMPILER V9.60.0.0   TEXT1                                                             12/07/2020 01:40:59 PAGE 2   
+
+  56   1        led2=1;
+  57   1        dj=0;
+  58   1        beep=1;
+  59   1        trig=0;
+  60   1        LCDInit();
+  61   1        timerInit();
+  62   1        dj=1;
+  63   1        while(1){
+  64   2          echo = 0; // 接收回音端置0
+  65   2          startUltra(); // 启动超声测距
+  66   2          while(!echo); // 等待回音
+  67   2          TR0 = 1; // 开始计时
+  68   2          while(echo);
+  69   2          TR0 = 0; // 停止计时
+  70   2          computeDis();   
+  71   2          distance=d-distance;// 计算距离
+  72   2          display(distance,l,m,h);    // 显示距离
+  73   2          if(djb==1)
+  74   2          {
+  75   3              dj=1;
+  76   3              delay(50);
+  77   3          }
+  78   2          if(djb==0)
+  79   2          {
+  80   3              dj=0;
+  81   3              delay(10);
+  82   3          }
+  83   2              
+  84   2          if(distance<m)
+  85   2          {dj=1;
+  86   3            delay(50);
+  87   3          }
+  88   2          if(distance>=m)
+  89   2          { dj=0;delay(10);}
+  90   2          if(distance<l)
+  91   2            {led2= 1;
+  92   3            led1 = 0;
+  93   3            beep = 0;
+  94   3          
+  95   3            delay(10);
+  96   3            }
+  97   2      
+  98   2          if(distance>h)
+  99   2            {led2=1;
+ 100   3            led1 = 0;
+ 101   3            beep = 0;
+ 102   3            delay(10);}
+ 103   2          if(distance<=h&&distance>=l)
+ 104   2            {
+ 105   3            beep=1;
+ 106   3            led1=1;
+ 107   3            led2=0;
+ 108   3            delay(10);} 
+ 109   2          if(key1==0) {
+ 110   3          delay(10);
+ 111   3          if (key1==0)
+ 112   3          sw+=1;}
+ 113   2          if(sw==1) 
+ 114   2          { if(key2==0) l+=1;
+ 115   3            if(key3==0) l-=1;}
+ 116   2          if(sw==2) 
+ 117   2          { if(key2==0) m+=1;
+C51 COMPILER V9.60.0.0   TEXT1                                                             12/07/2020 01:40:59 PAGE 3   
+
+ 118   3            if(key3==0) m-=1;}
+ 119   2          if(sw==3) 
+ 120   2          { if(key2==0) h+=1;
+ 121   3            if(key3==0) h-=1;
+ 122   3          }
+ 123   2          if(sw==4) sw=0;
+ 124   2      
+ 125   2        }
+ 126   1      }
+ 127          /*启动超声波测距*/
+ 128          void startUltra(){ // 产生一个大于10us的高电平
+ 129   1        trig = 1;
+ 130   1        delayUs(15);
+ 131   1        trig = 0;
+ 132   1      }
+ 133          
+ 134          /*timer初始化函数*/
+ 135          void timerInit(){
+ 136   1        SCON = 0x50;
+ 137   1        TMOD = 0x21;           // 同时使用两个定时器
+ 138   1        TH0 = 0x00;            // 置初值 
+ 139   1        TL0 = 0x00;
+ 140   1        TH1 = 0xFD;               // TH1:  初始值为0xFD  波特率：9600 晶振频率：11.0592MHz  
+ 141   1        TL1 = 0x00;
+ 142   1        ET0 = 1;            // 开timer0溢出中断
+ 143   1        TR1 = 1;                  // TR1:  开启定时器1                         
+ 144   1        EA  = 1;                  //打开总中断
+ 145   1        ES  = 1;                  //打开串口中断
+ 146   1      }
+ 147          void uart_send_byte(unsigned char dat)
+ 148          {
+ 149   1        SBUF = dat; // 将数据送到发送缓冲寄存器SBUF，一位一位的发送
+ 150   1        while(!TI); // 等待发送完毕 (发送完毕TI硬件置1)
+ 151   1        TI = 0;// 将TI清零，表示可以发送下一字节数据。
+ 152   1      }
+ 153          // 串口中断处理函数 （串口接收到数据，发送数据完毕都可以引起串口中断）
+ 154          void uart_send_str(unsigned char *s)
+ 155          {
+ 156   1        while(*s != '\0')// '\0':字符串结束标志
+ 157   1        {
+ 158   2          uart_send_byte(*s);// 发送1个字节数据，1个字符占8位，1字节
+ 159   2          s++;// 指向下一个字符
+ 160   2        }
+ 161   1      }
+ 162          
+ 163          void uart_interrupt(void) interrupt 4     //也叫串行中断服务程序
+ 164          {   unsigned char send_data1[]="ireceive" ;// 要发送的信息
+ 165   1      
+ 166   1        unsigned char recv_data;// 用来存放接收到的数据
+ 167   1        unsigned int send_data[3] ;
+ 168   1        unsigned char send_data2[3] ;// 要发送的信息
+ 169   1      
+ 170   1        send_data[0] = distance % 1000/100;
+ 171   1        send_data[1] = distance % 100 / 10;
+ 172   1        send_data[2] = distance % 10;
+ 173   1        send_data2[0] = zifu[send_data[0]];
+ 174   1        send_data2[1] = zifu[send_data[1]];
+ 175   1        send_data2[2] = zifu[send_data[2]];
+ 176   1      
+ 177   1        if(RI) //接收数据(1字节)完毕，RI会被硬件置1
+ 178   1        {
+ 179   2          RI = 0;               // 将 接收中断标志位 清零(让串口可以继续接收数据)
+C51 COMPILER V9.60.0.0   TEXT1                                                             12/07/2020 01:40:59 PAGE 4   
+
+ 180   2          recv_data = SBUF;             //读取接收到的数据，并存放到data
+ 181   2        if(recv_data==0xff){djb=0;}
+ 182   2        if(recv_data==0xfe){djb=1;}
+ 183   2        if(lb||mb||hb==1)
+ 184   2        { if(recv_data==0x00) {db= 10*db+0;}
+ 185   3        if(recv_data==0x01){db= 10*db+1;}
+ 186   3        if(recv_data==0x02){db= 10*db+2;}
+ 187   3        if(recv_data==0x03){db= 10*db+3;}
+ 188   3        if(recv_data==0x04){db= 10*db+4;}
+ 189   3        if(recv_data==0x05){db= 10*db+5;}
+ 190   3        if(recv_data==0x06){db= 10*db+6;}
+ 191   3        if(recv_data==0x07){db= 10*db+7;}
+ 192   3        if(recv_data==0x08){db= 10*db+8;}
+ 193   3        if(recv_data==0x09){db= 10*db+9;}
+ 194   3        if(recv_data==0x0a){lb=0;l=db;db=0;}
+ 195   3          if(recv_data==0x0b){mb=0;m=db;db=0;}
+ 196   3        if(recv_data==0x0c){hb=0;h=db;db=0;}
+ 197   3        if(recv_data==0x0d){hb=0;d=db;db=0;}
+ 198   3        }
+ 199   2          if(recv_data ==0x0a){
+ 200   3          lb=1; }
+ 201   2      
+ 202   2      
+ 203   2          if(recv_data ==0x0b){
+ 204   3          mb=1;}
+ 205   2      
+ 206   2          if(recv_data ==0x0c){
+ 207   3            hb=1; }
+ 208   2      
+ 209   2      
+ 210   2        
+ 211   2          
+ 212   2            uart_send_str(send_data2); //收到数据之后，发送字符串"I received."给对方
+ 213   2        }
+ 214   1        if(TI)// 发送数据(1字节)完毕
+ 215   1        {
+ 216   2          TI = 0;// 将 发送中断标志位 清零(让串口可以继续发送数据)
+ 217   2        }
+ 218   1      } 
+ 219          
+ 220          
+ 221          
+ 222          
+ 223          
+ 224          
+ 225          
+ 226          
+ 227          
+ 228          
+ 229          
+ 230          /*timer0溢出中断服务程序*/
+ 231          void timer0Service() interrupt 1{  // 计数溢出说明超出测距范围
+ 232   1      echo = 0; // 强制关闭回音
+ 233   1      
+ 234   1          }
+ 235          
+ 236          /*延时xus*/
+ 237          void delayUs(uint xus){
+ 238   1        uint i;
+ 239   1        for(i = xus; i > 0; i--){
+ 240   2          _nop_();
+ 241   2        }
+C51 COMPILER V9.60.0.0   TEXT1                                                             12/07/2020 01:40:59 PAGE 5   
+
+ 242   1      }
+ 243          
+ 244          
+ 245          /*计算距离*/
+ 246          void computeDis(){
+ 247   1        time = TH0 * 256 + TL0;
+ 248   1        distance = FACTOR * time;
+ 249   1        TH0 = 0x00; // 重装初值
+ 250   1        TL0 = 0x00;
+ 251   1      }
+ 252          
+ 253          
+ 254          uchar code table0[] = {"L:  M:  H:  N:  "};
+ 255          uchar code table2[] = {"0123456789"};
+ 256          
+ 257          uchar num = 0;
+ 258          
+ 259          
+ 260          /*初始化LCD1602的设置*/
+ 261          void LCDInit(){
+ 262   1        uchar i;
+ 263   1        lcden = 0; // 拉低使能端，准备产生使能高脉冲信号
+ 264   1        writeCommand(0x38); // 显示模式设置(16x2， 5x7点阵，8位数据接口)
+ 265   1        writeCommand(0x0c); // 开显示，不显示光标
+ 266   1        writeCommand(0x06); // 写一个字符后地址指针自动加1
+ 267   1        writeCommand(0x01); // 显示清零，数据指针清零
+ 268   1        
+ 269   1        /*LCD上电界面*/
+ 270   1        writeCommand(0x80); // 将数据指针定位到第一行首
+ 271   1        for(i = 0; i < strlen(table0); i++){
+ 272   2          writeDataLCD(table0[i]);
+ 273   2          delay(5);
+ 274   2        }
+ 275   1      
+ 276   1        writeCommand(0x80 + 0x40); // 将数据指针定位到第二行首
+ 277   1      
+ 278   1      }
+ 279          
+ 280          /*LCD显示函数*/
+ 281          void display(float dat,l,m,h){
+ 282   1        uint disINT = (uint)dat;
+ 283   1        uchar  i;
+ 284   1        dis[0] = l % 1000 / 100;
+ 285   1        dis[1] = l % 100 / 10;
+ 286   1        dis[2] = l % 10;
+ 287   1        for(i = 0; i < 3; i++){
+ 288   2          writeCommand(0x80 + 0x40 + i);
+ 289   2          writeDataLCD(table2[dis[i]]);
+ 290   2          delay(5);
+ 291   2        }
+ 292   1        dis[0] = m % 1000 / 100;
+ 293   1        dis[1] = m % 100 / 10;
+ 294   1        dis[2] = m % 10;
+ 295   1        for(i = 0; i < 3; i++){
+ 296   2          writeCommand(0x80 + 0x40 + 4 + i);
+ 297   2          writeDataLCD(table2[dis[i]]);
+ 298   2          delay(5);
+ 299   2        }
+ 300   1        dis[0] = h % 1000 / 100;
+ 301   1        dis[1] = h % 100 / 10;
+ 302   1        dis[2] = h % 10;
+ 303   1        for(i = 0; i < 3; i++){
+C51 COMPILER V9.60.0.0   TEXT1                                                             12/07/2020 01:40:59 PAGE 6   
+
+ 304   2          writeCommand(0x80 + 0x40 + 8 + i);
+ 305   2          writeDataLCD(table2[dis[i]]);
+ 306   2          delay(5);
+ 307   2        }
+ 308   1        dis[0] = disINT % 1000 / 100;
+ 309   1        dis[1] = disINT % 100 / 10;
+ 310   1        dis[2] = disINT % 10;
+ 311   1        for(i = 0; i < 3; i++){
+ 312   2          writeCommand(0x80 + 0x40 + 12 + i);
+ 313   2          writeDataLCD(table2[dis[i]]);
+ 314   2          delay(5);
+ 315   2        }
+ 316   1        }
+ 317          
+ 318          
+ 319          /*写指令函数*/
+ 320          void writeCommand(unsigned char command)
+ 321            {
+ 322   1        lcdrs = 0; // 命令选择
+ 323   1        lcdrw = 0;
+ 324   1        P0 = command;
+ 325   1        delay(5);
+ 326   1        
+ 327   1        lcden = 1; // 产生一个正脉冲使能信号
+ 328   1        delay(5);
+ 329   1        lcden = 0;
+ 330   1      }
+ 331          
+ 332          /*写数据函数*/
+ 333          void writeDataLCD(uchar dat){
+ 334   1        lcdrs = 1; // 数据选择
+ 335   1        lcdrw = 0;
+ 336   1      
+ 337   1        P0 = dat;
+ 338   1        delay(5);
+ 339   1      
+ 340   1        lcden = 1;
+ 341   1        delay(5);
+ 342   1        lcden = 0;
+ 343   1      }
+ 344          
+ 345          /*延时xms函数*/
+ 346          void delay(uint xms){
+ 347   1        uint i, j;
+ 348   1        for(i = xms; i > 0; i--)
+ 349   1          for(j = 110; j > 0; j--);
+ 350   1      }
+ 351          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1620    ----
+   CONSTANT SIZE    =     37    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     34      32
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
